@@ -136,6 +136,7 @@ class D2Solver():
                 done = False
                 total_rewards = np.full(self.nplayers, 0)
                 turns = 0
+                first_player = self.env.unwrapped.player
                 while not done and turns < 1000:
                     pid = self.env.unwrapped.player
                     print('Turn %d for player %d' % (turns, pid))
@@ -153,7 +154,7 @@ class D2Solver():
                 scores.append(total_rewards)
                 mean_scores = np.mean(scores, 0)
                 for pid in range(self.nplayers):
-                    print('[Episode {}][Player {} Win? {}] - Mean score for last 100 {}'.format(e, pid, 'Y' if total_rewards[pid] == 1 else 'N', mean_scores[pid]))
+                    print('[Episode {}][Player {} Win? {} First? {}] - Mean score for last 100 {}'.format(e, pid, 'Y' if pid == first_player else 'N', 'Y' if total_rewards[pid] == 1 else 'N', mean_scores[pid]))
                     self.models[pid].train()
                     self.models[pid].dump('models/episode_%d_%d.bin' % (pid, e))
             self.models[pid].dump('models/episode_%d_latest.bin' % pid)

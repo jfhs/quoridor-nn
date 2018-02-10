@@ -1,6 +1,7 @@
 from keras import models
 
 import quoridor_env
+import quoridor
 import tensorflow as tf
 from keras import backend as K
 import random
@@ -9,7 +10,7 @@ import math
 import numpy as np
 from collections import deque
 from keras.models import Sequential, load_model
-from keras.layers import Dense
+from keras.layers import Dense, Conv2D, LeakyReLU, Flatten, AveragePooling1D, MaxPooling2D
 from keras.optimizers import Adam
 from keras.utils import plot_model
 from gym.spaces import prng
@@ -45,12 +46,29 @@ class QuoridorModel:
         self.quiet = quiet
         self.action_count = env.action_space.n
         self.minibatches_per_episode = minibatches_per_episode
+        self.sx = env.unwrapped.sx
+        self.sy = env.unwrapped.sy
 
+        sz = self.sx*self.sy
         self.model = Sequential()
-        self.model.add(Dense(env.observation_space.n*2, input_dim=env.observation_space.n, activation='linear'))
-        self.model.add(Dense(env.observation_space.n, activation='linear'))
-        self.model.add(Dense(env.observation_space.n, activation='tanh'))
-        self.model.add(Dense(env.observation_space.n, activation='softmax'))
+        self.model.add(Conv2D(sz, kernel_size=3, input_shape=(self.sx, self.sy, 5), data_format='channels_last'))
+        for i in range(2):
+            self.model.add(Conv2D(sz, kernel_size=3))
+            self.model.add(LeakyReLU(0.1))
+
+        self.model.add(MaxPooling2D())
+        print(self.model.output_shape)
+        self.model.add(Flatten())
+
+        self.model.add(Dense(self.sx, activation='linear'))
+        self.model.add(Dense(self.sx * 2, activation='linear'))
+        self.model.add(Dense(self.sx * 4, activation='linear'))
+        self.model.add(Dense(self.sx * 8, activation='linear'))
+        self.model.add(Dense(self.sx * 16, activation='linear'))
+        self.model.add(Dense(self.sx * 16, activation='tanh'))
+        self.model.add(Dense(env.action_space.n, activation='linear'))
+        self.model.add(Dense(env.action_space.n, activation='softmax'))
+        self.model.add(Dense(env.action_space.n, activation='softmax'))
         self.model.add(Dense(env.action_space.n, activation='linear'))
         self.model.compile(loss='mse', optimizer=Adam(lr=self.alpha, decay=self.alpha_decay))
 
@@ -63,6 +81,21 @@ class QuoridorModel:
     def dump(self, fname):
         self.model.save(fname)
 
+    def preprocess(self, state):
+        board = np.full((self.sx, self.sy, 5), 0)
+        nplayers = 2
+        offset = nplayers * 2 + 1
+        state = state[0]
+        for x in range(self.sx):
+            for y in range(self.sy):
+                p = x * self.sy + y
+                board[x][y][0] = 1 if state[1] == p else 0
+                board[x][y][1] = 1 if state[2] == p else 0
+                board[x][y][2] = 1 if int(state[offset + p]) & quoridor.DIR_RIGHT else 0
+                board[x][y][3] = 1 if int(state[offset + p]) & quoridor.DIR_DOWN else 0
+                board[x][y][4] = 1 if int(state[offset + p]) & quoridor.DIR_RIGHT_AND_DOWN else 0
+        return np.array([board])
+
     def random_move(self, state):
         pid = state[0][0]
         player_cnt = 2
@@ -74,10 +107,10 @@ class QuoridorModel:
         return max(self.epsilon_min, min(self.epsilon, 1.0 - math.log10((t/10 + 1) * self.epsilon_decay)))
 
     def choose_action(self, state, episode):
-        return self.random_move(state) if (np.random.random() <= self.get_epsilon(episode)) else np.argmax(self.model.predict(state))
+        return self.random_move(state) if (np.random.random() <= self.get_epsilon(episode)) else np.argmax(self.model.predict(self.preprocess(state)))
 
     def process_result(self, state, action, reward, next_state, done):
-        self.remember(state, action, reward, next_state, done)
+        self.remember(self.preprocess(state), action, reward, self.preprocess(next_state), done)
 
     def replay(self, batch_size):
         #print("replay")

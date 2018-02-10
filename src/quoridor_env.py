@@ -14,6 +14,8 @@ class QuoridorEnv(gym.Env):
         self.action_space = spaces.Discrete(self.game.num_of_possible_moves())
         self.observation_space = spaces.Discrete(ROWS * COLS + NUMBER_OF_PLAYERS * 2 + 1)
         self.number_of_players = NUMBER_OF_PLAYERS
+        self.sx = ROWS
+        self.sy = COLS
         self.player = player
         self.reward_range = [0, 1]
         self.metadata['render.modes'] = ['ansi']
